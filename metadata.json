@@ -1,0 +1,5 @@
+{
+  "name": "의료 광고 심의 AI",
+  "description": "OpenAI Vision 기능을 사용하여 규정 준수 여부를 검토하는 AI 기반 의료 광고 심의 대시보드입니다.",
+  "requestFramePermissions": []
+}
