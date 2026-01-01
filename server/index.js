@@ -17,6 +17,33 @@ ensureUploadsDir();
 const app = express();
 app.use(express.json({ limit: '20mb' }));
 
+const parseCorsOrigins = () => {
+  const raw = process.env.CORS_ALLOW_ORIGINS || process.env.CORS_ALLOW_ORIGIN || '';
+  return raw
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+};
+
+const allowedOrigins = parseCorsOrigins();
+const allowAllOrigins = allowedOrigins.length === 0;
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const isAllowed = allowAllOrigins || (origin && allowedOrigins.includes(origin));
+  if (isAllowed) {
+    res.setHeader('Access-Control-Allow-Origin', allowAllOrigins ? (origin || '*') : origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-user-role, x-user-email');
+  res.setHeader('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
+
 const mapAnalysisRow = (row) => {
   if (!row) return null;
   const ocrBoxes = row.ocrBoxesJson ? JSON.parse(row.ocrBoxesJson) : [];
