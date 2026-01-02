@@ -24,6 +24,27 @@ View your app in AI Studio: https://ai.studio/apps/drive/1YpaFYLUaAQ0kfZpP2FtoTM
 3. Run the app (client + server):
    `npm run dev`
 
+Note: The demo API route lives at `/api/analyze` for Vercel. To test that locally, use `vercel dev` (Vercel CLI).
+The Express server in `server/` is for the separate-backend deployment described below.
+
+## Deploy (Vercel-only demo, no storage)
+
+This mode runs OCR + AI in a Vercel Serverless Function and does **not** persist history or images.
+
+1. Push the repo to GitHub.
+2. Vercel -> New Project -> Import repository.
+3. Add environment variables (Production + Preview):
+   - `OPENAI_API_KEY` (optional, for AI rationale)
+   - `OPENAI_MODEL` (optional, e.g. `gpt-4.1`)
+   - `GOOGLE_VISION_API_KEY`
+   - `OCR_LANGUAGE_HINTS` (optional, e.g. `ko,en`)
+   - `DEMO_MAX_IMAGE_BYTES` (optional, default 2097152)
+4. Deploy.
+
+Notes:
+- Keep images <= 2MB for demo mode (base64 size limit).
+- History resets on page refresh.
+
 ## Deploy (separate backend + Vercel frontend)
 
 This project runs an Express API in `server/` and a Vite frontend. For production, deploy the backend
