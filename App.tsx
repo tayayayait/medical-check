@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
-import { User, Role, AnalysisResult, Permission, Metrics, AnalysisStatus } from './types';
+import { User, Role, AnalysisResult, Permission, Metrics } from './types';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { NewAnalysis } from './pages/NewAnalysis';
@@ -10,25 +10,43 @@ import { AdminSettings } from './pages/AdminSettings';
 import { Layout } from './components/Layout';
 import { hasPermission } from './auth/permissions';
 import { AuthContext, useAuth } from './contexts/AuthContext';
-import { getMetrics, getAnalysisJob, listHistory, submitAnalysis } from './services/analysisService';
+import { submitAnalysis as submitAnalysisApi } from './services/analysisService';
 
 // --- Data Context ---
 interface GlobalDataContextType {
   history: AnalysisResult[];
   metrics: Metrics;
   isLoading: boolean;
-  addAnalysisResult: (result: AnalysisResult) => Promise<void>;
-  submitAnalysis: (base64Image: string, adName: string) => Promise<{ jobId: string }>;
-  pollAnalysisJob: (jobId: string) => Promise<{ status: AnalysisStatus; result?: AnalysisResult; error?: string }>;
-  refreshHistory: () => Promise<void>;
-  refreshMetrics: () => Promise<void>;
+  submitAnalysis: (base64Image: string, adName: string) => Promise<AnalysisResult>;
 }
 const GlobalDataContext = createContext<GlobalDataContextType | undefined>(undefined);
 
 export const useGlobalData = () => {
   const context = useContext(GlobalDataContext);
-  if (!context) throw new Error("useGlobalData must be used within GlobalDataProvider");
+  if (!context) throw new Error('useGlobalData must be used within GlobalDataProvider');
   return context;
+};
+
+const computeMetrics = (items: AnalysisResult[]): Metrics => {
+  const counts = items.reduce(
+    (acc, item) => {
+      acc[item.riskLevel] += 1;
+      return acc;
+    },
+    { high: 0, medium: 0, low: 0 }
+  );
+
+  return {
+    totalAnalyses: items.length,
+    highRiskCount: counts.high,
+    mediumRiskCount: counts.medium,
+    lowRiskCount: counts.low,
+    riskDistribution: [
+      { name: 'High', value: counts.high, color: '#E53935' },
+      { name: 'Medium', value: counts.medium, color: '#FB8C00' },
+      { name: 'Low', value: counts.low, color: '#43A047' }
+    ]
+  };
 };
 
 // --- Protected Route Component ---
@@ -75,34 +93,8 @@ const getInitialUser = (): User | null => {
 export default function App() {
   const [user, setUser] = useState<User | null>(getInitialUser);
   const [history, setHistory] = useState<AnalysisResult[]>([]);
-  const [metrics, setMetrics] = useState<Metrics>({
-    totalAnalyses: 0,
-    highRiskCount: 0,
-    mediumRiskCount: 0,
-    lowRiskCount: 0,
-    riskDistribution: [
-      { name: '고위험', value: 0, color: '#E53935' },
-      { name: '중위험', value: 0, color: '#FB8C00' },
-      { name: '저위험', value: 0, color: '#43A047' },
-    ]
-  });
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const initData = async () => {
-      setIsLoading(true);
-      try {
-        const [historyData, metricsData] = await Promise.all([listHistory(), getMetrics()]);
-        setHistory(historyData);
-        setMetrics(metricsData);
-      } catch (error) {
-        console.error(error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    void initData();
-  }, []);
+  const [metrics, setMetrics] = useState<Metrics>(() => computeMetrics([]));
+  const isLoading = false;
 
   const login = (role: Role) => {
     const newUser = createUserForRole(role);
@@ -121,40 +113,20 @@ export default function App() {
     localStorage.removeItem('medai_user');
   };
 
-  const refreshHistory = async () => {
-    const historyData = await listHistory();
-    setHistory(historyData);
-  };
-
-  const refreshMetrics = async () => {
-    const metricsData = await getMetrics();
-    setMetrics(metricsData);
-  };
-
-  const addAnalysisResult = async (result: AnalysisResult) => {
-    setHistory(prev => [result, ...prev]);
-    await refreshMetrics();
-  };
-
-  const submitAnalysisWithStore = async (base64Image: string, adName: string) => {
-    return submitAnalysis(base64Image, adName);
-  };
-
-  const pollAnalysisJob = async (jobId: string) => {
-    const job = await getAnalysisJob(jobId);
-    if (!job) {
-      return { status: 'failed' as AnalysisStatus, error: '분석 작업을 찾을 수 없습니다.' };
-    }
-    if (job.status === 'done' && job.result) {
-      setHistory(prev => (prev.some((item) => item.id === job.result?.id) ? prev : [job.result, ...prev]));
-      await refreshMetrics();
-    }
-    return { status: job.status, result: job.result, error: job.error };
+  const submitAnalysis = async (base64Image: string, adName: string) => {
+    const result = await submitAnalysisApi(base64Image, adName);
+    const withImage = { ...result, imageUrl: base64Image };
+    setHistory((prev) => {
+      const next = [withImage, ...prev];
+      setMetrics(computeMetrics(next));
+      return next;
+    });
+    return withImage;
   };
 
   return (
     <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, logout }}>
-      <GlobalDataContext.Provider value={{ history, metrics, isLoading, addAnalysisResult, submitAnalysis: submitAnalysisWithStore, pollAnalysisJob, refreshHistory, refreshMetrics }}>
+      <GlobalDataContext.Provider value={{ history, metrics, isLoading, submitAnalysis }}>
         <HashRouter>
           <Routes>
             <Route path="/login" element={BYPASS_LOGIN ? <Navigate to="/dashboard" replace /> : <Login />} />
