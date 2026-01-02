@@ -10,38 +10,16 @@ export const NewAnalysis: React.FC = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [adName, setAdName] = useState('');
   const [analysisStatus, setAnalysisStatus] = useState<AnalysisStatus | 'idle'>('idle');
-  const [jobId, setJobId] = useState<string | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  const { submitAnalysis, pollAnalysisJob } = useGlobalData();
+  const { submitAnalysis } = useGlobalData();
   const navigate = useNavigate();
 
   const allowedTypes = useMemo(() => ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'], []);
-  const maxFileSize = 5 * 1024 * 1024;
-  const isAnalyzing = analysisStatus === 'queued' || analysisStatus === 'running';
+  const maxFileSize = 2 * 1024 * 1024;
+  const isAnalyzing = analysisStatus === 'running';
 
-  useEffect(() => {
-    if (!jobId) return;
-    let isActive = true;
-    const interval = window.setInterval(async () => {
-      const status = await pollAnalysisJob(jobId);
-      if (!isActive) return;
-      setAnalysisStatus(status.status);
-      if (status.status === 'done' && status.result) {
-        setAnalysisId(status.result.id);
-        window.clearInterval(interval);
-      }
-      if (status.status === 'failed') {
-        setError(status.error ?? '분석에 실패했습니다. 다시 시도해주세요.');
-        window.clearInterval(interval);
-      }
-    }, 1200);
-    return () => {
-      isActive = false;
-      window.clearInterval(interval);
-    };
-  }, [jobId, pollAnalysisJob]);
 
   useEffect(() => {
     return () => {
@@ -54,7 +32,7 @@ export const NewAnalysis: React.FC = () => {
       return 'PNG, JPG, JPEG, WEBP 파일만 업로드할 수 있습니다.';
     }
     if (file.size > maxFileSize) {
-      return '파일 용량은 5MB 이하여야 합니다.';
+      return '파일 용량은 2MB 이하여야 합니다.';
     }
     return null;
   };
@@ -73,8 +51,7 @@ export const NewAnalysis: React.FC = () => {
       setSelectedFile(file);
       setPreviewUrl(URL.createObjectURL(file));
       setAnalysisStatus('idle');
-      setJobId(null);
-      setAnalysisId(null);
+        setAnalysisId(null);
       setError(null);
     }
   };
@@ -85,7 +62,6 @@ export const NewAnalysis: React.FC = () => {
     setAdName('');
     setError(null);
     setAnalysisStatus('idle');
-    setJobId(null);
     setAnalysisId(null);
   };
 
@@ -110,14 +86,15 @@ export const NewAnalysis: React.FC = () => {
       return;
     }
 
-    setAnalysisStatus('queued');
+    setAnalysisStatus('running');
     setAnalysisId(null);
     setError(null);
 
     try {
       const base64 = await convertToBase64(selectedFile);
-      const { jobId: createdJobId } = await submitAnalysis(base64, adName);
-      setJobId(createdJobId);
+      const result = await submitAnalysis(base64, adName);
+      setAnalysisId(result.id);
+      setAnalysisStatus('done');
     } catch (err) {
       console.error(err);
       setError("분석에 실패했습니다. 다시 시도하거나 API 키를 확인해주세요.");
@@ -147,7 +124,7 @@ export const NewAnalysis: React.FC = () => {
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
                   <Upload className="w-10 h-10 mb-3 text-text-secondary" />
                   <p className="mb-2 text-sm text-text-secondary"><span className="font-semibold">클릭하여 업로드</span> 또는 파일을 드래그하세요</p>
-                  <p className="text-xs text-text-secondary">PNG, JPG, WEBP (최대 5MB)</p>
+                  <p className="text-xs text-text-secondary">PNG, JPG, WEBP (최대 2MB)</p>
                 </div>
                 <input type="file" className="hidden" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleFileChange} />
               </label>
@@ -171,10 +148,10 @@ export const NewAnalysis: React.FC = () => {
             </div>
           )}
 
-          {(analysisStatus === 'queued' || analysisStatus === 'running') && (
+          {analysisStatus === 'running' && (
             <Progress
               indeterminate
-              label={analysisStatus === 'queued' ? '분석 대기 중...' : '분석 진행 중...'}
+              label='분석 진행 중...'
             />
           )}
 
